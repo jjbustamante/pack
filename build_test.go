@@ -133,12 +133,12 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 	})
 
 	it.After(func() {
-		defaultBuilderImage.Cleanup()
-		fakeDefaultRunImage.Cleanup()
-		fakeMirror1.Cleanup()
-		fakeMirror2.Cleanup()
+		h.AssertNilE(t, defaultBuilderImage.Cleanup())
+		h.AssertNilE(t, fakeDefaultRunImage.Cleanup())
+		h.AssertNilE(t, fakeMirror1.Cleanup())
+		h.AssertNilE(t, fakeMirror2.Cleanup())
 		os.RemoveAll(tmpDir)
-		fakeLifecycleImage.Cleanup()
+		h.AssertNilE(t, fakeLifecycleImage.Cleanup())
 	})
 
 	when("#Build", func() {
@@ -227,9 +227,9 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				})
 
 				it.After(func() {
-					remoteRunImage.Cleanup()
-					builderWithoutLifecycleImageOrCreator.Cleanup()
-					h.AssertNil(t, builtImage.Cleanup())
+					h.AssertNilE(t, remoteRunImage.Cleanup())
+					h.AssertNilE(t, builderWithoutLifecycleImageOrCreator.Cleanup())
+					h.AssertNilE(t, builtImage.Cleanup())
 				})
 
 				it("only prints app name and sha", func() {
@@ -255,7 +255,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				})
 
 				it.After(func() {
-					builtImage.Cleanup()
+					h.AssertNilE(t, builtImage.Cleanup())
 				})
 
 				it("only prints app name and sha", func() {
@@ -463,8 +463,8 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				})
 
 				it.After(func() {
-					customBuilderImage.Cleanup()
-					fakeRunImage.Cleanup()
+					h.AssertNilE(t, customBuilderImage.Cleanup())
+					h.AssertNilE(t, fakeRunImage.Cleanup())
 				})
 
 				it("it uses the provided builder", func() {
@@ -490,7 +490,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 			})
 
 			it.After(func() {
-				fakeRunImage.Cleanup()
+				h.AssertNilE(t, fakeRunImage.Cleanup())
 			})
 
 			when("run image stack matches the builder stack", func() {
@@ -589,8 +589,8 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 					})
 
 					it.After(func() {
-						fakeLocalMirror.Cleanup()
-						fakeLocalMirror1.Cleanup()
+						h.AssertNilE(t, fakeLocalMirror.Cleanup())
+						h.AssertNilE(t, fakeLocalMirror1.Cleanup())
 					})
 
 					when("Publish is true", func() {
@@ -1148,7 +1148,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				})
 
 				it.After(func() {
-					h.AssertNil(t, os.Remove(buildpackTgz))
+					h.AssertNilE(t, os.Remove(buildpackTgz))
 				})
 
 				it("buildpacks are added to ephemeral builder", func() {
@@ -1490,8 +1490,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 
 					it.After(func() {
 						os.Unsetenv("PACK_HOME")
-						err := os.RemoveAll(tmpDir)
-						h.AssertNil(t, err)
+						h.AssertNil(t, os.RemoveAll(tmpDir))
 					})
 
 					it("all buildpacks are added to ephemeral builder", func() {
@@ -1803,9 +1802,9 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 					})
 
 					it.After(func() {
-						h.AssertNil(t, os.Unsetenv("HTTP_PROXY"))
-						h.AssertNil(t, os.Unsetenv("HTTPS_PROXY"))
-						h.AssertNil(t, os.Unsetenv("NO_PROXY"))
+						h.AssertNilE(t, os.Unsetenv("HTTP_PROXY"))
+						h.AssertNilE(t, os.Unsetenv("HTTPS_PROXY"))
+						h.AssertNilE(t, os.Unsetenv("NO_PROXY"))
 					})
 
 					it("defaults to the *_PROXY environment variables", func() {
