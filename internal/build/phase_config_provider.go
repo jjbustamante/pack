@@ -22,14 +22,15 @@ const (
 type PhaseConfigProviderOperation func(*PhaseConfigProvider)
 
 type PhaseConfigProvider struct {
-	ctrConf      *container.Config
-	hostConf     *container.HostConfig
-	name         string
-	os           string
-	containerOps []ContainerOperation
-	infoWriter   io.Writer
-	errorWriter  io.Writer
-	handler      pcontainer.Handler
+	ctrConf             *container.Config
+	hostConf            *container.HostConfig
+	name                string
+	os                  string
+	containerOps        []ContainerOperation
+	postContainerRunOps []ContainerOperation
+	infoWriter          io.Writer
+	errorWriter         io.Writer
+	handler             pcontainer.Handler
 }
 
 func NewPhaseConfigProvider(name string, lifecycleExec *LifecycleExecution, ops ...PhaseConfigProviderOperation) *PhaseConfigProvider {
@@ -230,4 +231,18 @@ func WithContainerOperations(operations ...ContainerOperation) PhaseConfigProvid
 	return func(provider *PhaseConfigProvider) {
 		provider.containerOps = append(provider.containerOps, operations...)
 	}
+}
+
+func WithPostContainerRunOperations(operations ...ContainerOperation) PhaseConfigProviderOperation {
+	return func(provider *PhaseConfigProvider) {
+		provider.postContainerRunOps = append(provider.postContainerRunOps, operations...)
+	}
+}
+
+func WithIf(expression bool, operation PhaseConfigProviderOperation) PhaseConfigProviderOperation {
+	if expression {
+		return operation
+	}
+
+	return NullOp()
 }

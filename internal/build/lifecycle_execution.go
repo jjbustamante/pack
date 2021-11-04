@@ -178,36 +178,6 @@ func (l *LifecycleExecution) Run(ctx context.Context, phaseFactoryCreator PhaseF
 	return l.Create(ctx, l.opts.Publish, l.opts.DockerHost, l.opts.ClearCache, l.opts.RunImage, l.opts.Image.String(), l.opts.Network, buildCache, launchCache, l.opts.AdditionalTags, l.opts.Volumes, phaseFactory)
 }
 
-func (l *LifecycleExecution) FetchVolumes(ctx context.Context, phaseFactory PhaseFactory, operation ContainerOperation) error {
-	configProvider := NewPhaseConfigProvider(
-		"no-op",
-		l,
-		WithLogPrefix("no-op"),
-		WithArgs(
-			l.withLogLevel()...,
-		),
-		WithContainerOperations(
-			EnsureVolumeAccess(l.opts.Builder.UID(), l.opts.Builder.GID(), l.os, l.layersVolume, l.appVolume),
-			operation,
-		),
-	)
-
-	fetch := phaseFactory.New(configProvider)
-	defer fetch.Cleanup()
-	return fetch.Run(ctx)
-}
-
-func (l *LifecycleExecution) CopyOCI() error {
-	var reterr error
-	if l.opts.OCIPath != "" {
-		if err := l.FetchVolumes(context.Background(), NewDefaultPhaseFactory(l),
-			CopyOutDirs(l.copyOCI, filepath.Join(l.mountPaths.ociDir()))); err != nil {
-			reterr = errors.Wrapf(err, "failed to extract volumes to file-system")
-		}
-	}
-	return reterr
-}
-
 func (l *LifecycleExecution) copyOCI(reader io.ReadCloser) error {
 	defer reader.Close()
 	if l.opts.OCIPath != "" {
@@ -285,10 +255,8 @@ func (l *LifecycleExecution) Create(ctx context.Context, publish bool, dockerHos
 		cacheOpts = WithBinds(append(volumes, fmt.Sprintf("%s:%s", buildCache.Name(), l.mountPaths.cacheDir()))...)
 	}
 
-	layoutEnv := NullOp()
 	if l.opts.OCIPath != "" {
 		flags = append(flags, "-layout")
-		layoutEnv = WithEnv(fmt.Sprintf("%s=%s", builder.EnvLayoutDir, l.mountPaths.ociDir()))
 	}
 
 	opts := []PhaseConfigProviderOperation{
@@ -298,7 +266,8 @@ func (l *LifecycleExecution) Create(ctx context.Context, publish bool, dockerHos
 		cacheOpts,
 		WithContainerOperations(WriteProjectMetadata(l.mountPaths.projectPath(), l.opts.ProjectMetadata, l.os)),
 		WithContainerOperations(CopyDir(l.opts.AppPath, l.mountPaths.appDir(), l.opts.Builder.UID(), l.opts.Builder.GID(), l.os, true, l.opts.FileFilter)),
-		layoutEnv,
+		WithIf(l.opts.OCIPath != "",
+			WithEnv(fmt.Sprintf("%s=%s", builder.EnvLayoutDir, l.mountPaths.ociDir()))),
 	}
 
 	if publish {
@@ -438,12 +407,6 @@ func (l *LifecycleExecution) newAnalyze(repoName, networkMode string, publish bo
 		l.opts.Image = prevImage
 	}
 
-	layoutEnv := NullOp()
-	if l.opts.OCIPath != "" {
-		flagsOpt = WithFlags("-layout")
-		layoutEnv = WithEnv(fmt.Sprintf("%s=%s", builder.EnvLayoutDir, l.mountPaths.ociDir()))
-	}
-
 	if publish {
 		authConfig, err := auth.BuildEnvVar(authn.DefaultKeychain, repoName)
 		if err != nil {
@@ -460,8 +423,10 @@ func (l *LifecycleExecution) newAnalyze(repoName, networkMode string, publish bo
 			WithRoot(),
 			WithArgs(l.withLogLevel(args...)...),
 			WithNetwork(networkMode),
-			flagsOpt,
-			cacheOpt,
+			WithIf(l.opts.OCIPath != "",
+				WithFlags("-layout")),
+			WithIf(l.opts.OCIPath != "",
+				WithEnv(fmt.Sprintf("%s=%s", builder.EnvLayoutDir, l.mountPaths.ociDir()))),
 		)
 
 		return phaseFactory.New(configProvider), nil
@@ -489,7 +454,8 @@ func (l *LifecycleExecution) newAnalyze(repoName, networkMode string, publish bo
 		flagsOpt,
 		WithNetwork(networkMode),
 		cacheOpt,
-		layoutEnv,
+		WithIf(l.opts.OCIPath != "",
+			WithEnv(fmt.Sprintf("%s=%s", builder.EnvLayoutDir, l.mountPaths.ociDir()))),
 	)
 
 	return phaseFactory.New(configProvider), nil
@@ -546,10 +512,8 @@ func (l *LifecycleExecution) newExport(repoName, runImage string, publish bool, 
 		cacheOpt = WithBinds(fmt.Sprintf("%s:%s", buildCache.Name(), l.mountPaths.cacheDir()))
 	}
 
-	layoutEnv := NullOp()
 	if l.opts.OCIPath != "" {
 		flags = append(flags, "-layout")
-		layoutEnv = WithEnv(fmt.Sprintf("%s=%s", builder.EnvLayoutDir, l.mountPaths.ociDir()))
 	}
 
 	opts := []PhaseConfigProviderOperation{
@@ -568,7 +532,10 @@ func (l *LifecycleExecution) newExport(repoName, runImage string, publish bool, 
 		cacheOpt,
 		WithContainerOperations(WriteStackToml(l.mountPaths.stackPath(), l.opts.Builder.Stack(), l.os)),
 		WithContainerOperations(WriteProjectMetadata(l.mountPaths.projectPath(), l.opts.ProjectMetadata, l.os)),
-		layoutEnv,
+		WithIf(l.opts.OCIPath != "",
+			WithEnv(fmt.Sprintf("%s=%s", builder.EnvLayoutDir, l.mountPaths.ociDir()))),
+		WithIf(l.opts.OCIPath != "",
+			WithPostContainerRunOperations(CopyOutDirs(l.copyOCI, filepath.Join(l.mountPaths.ociDir())))),
 	}
 
 	if publish {
@@ -599,7 +566,6 @@ func (l *LifecycleExecution) Export(ctx context.Context, repoName, runImage stri
 	if err != nil {
 		return err
 	}
-	defer l.CopyOCI()
 	defer export.Cleanup()
 	return export.Run(ctx)
 }
