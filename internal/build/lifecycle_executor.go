@@ -69,6 +69,7 @@ type LifecycleOptions struct {
 	Builder            Builder
 	LifecycleImage     string
 	RunImage           string
+	OCIPath            string
 	ProjectMetadata    platform.ProjectMetadata
 	ClearCache         bool
 	Publish            bool

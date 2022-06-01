@@ -463,6 +463,28 @@ func (l *LifecycleExecution) newAnalyze(repoName, networkMode string, publish bo
 		return phaseFactory.New(configProvider), nil
 	}
 
+	// TODO: when platform API 0.2 is no longer supported we can delete this code: https://github.com/buildpacks/pack/issues/629.
+	argsOpt := NullOp()
+	if l.opts.OCIPath != "" {
+		args = append([]string{"-oci"}, args...)
+		argsOpt = WithArgs(
+			l.withLogLevel(
+				args...,
+			)...,
+		)
+		cacheOpt = WithBinds(fmt.Sprintf("%s:%s", l.opts.OCIPath, l.mountPaths.ociDir()))
+
+	} else {
+		argsOpt = WithArgs(
+			l.withLogLevel(
+				prependArg(
+					"-daemon",
+					args,
+				)...,
+			)...,
+		)
+	}
+
 	configProvider := NewPhaseConfigProvider(
 		"analyzer",
 		l,
@@ -473,15 +495,12 @@ func (l *LifecycleExecution) newAnalyze(repoName, networkMode string, publish bo
 			fmt.Sprintf("%s=%d", builder.EnvGID, l.opts.Builder.GID()),
 		),
 		WithDaemonAccess(dockerHost),
-		launchCacheOpt,
-		WithFlags(l.withLogLevel("-daemon")...),
-		WithArgs(args...),
+		argsOpt,
 		flagsOpt,
 		WithNetwork(networkMode),
 		cacheOpt,
 		stackOpts,
 	)
-
 	return phaseFactory.New(configProvider), nil
 }
 
@@ -582,12 +601,20 @@ func (l *LifecycleExecution) newExport(repoName, runImage string, publish bool, 
 			WithRoot(),
 		)
 	} else {
-		opts = append(
-			opts,
-			WithDaemonAccess(dockerHost),
-			WithFlags("-daemon", "-launch-cache", l.mountPaths.launchCacheDir()),
-			WithBinds(fmt.Sprintf("%s:%s", launchCache.Name(), l.mountPaths.launchCacheDir())),
-		)
+		if l.opts.OCIPath != "" {
+			opts = append(
+				opts,
+				WithFlags("-oci"),
+				WithBinds(fmt.Sprintf("%s:%s", l.opts.OCIPath, l.mountPaths.ociDir())),
+			)
+		} else {
+			opts = append(
+				opts,
+				WithDaemonAccess(dockerHost),
+				WithFlags("-daemon", "-launch-cache", l.mountPaths.launchCacheDir()),
+				WithBinds(fmt.Sprintf("%s:%s", launchCache.Name(), l.mountPaths.launchCacheDir())),
+			)
+		}
 	}
 
 	return phaseFactory.New(NewPhaseConfigProvider("exporter", l, opts...)), nil

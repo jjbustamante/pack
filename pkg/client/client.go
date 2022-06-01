@@ -93,6 +93,7 @@ type Client struct {
 	downloader          BlobDownloader
 	lifecycleExecutor   LifecycleExecutor
 	buildpackDownloader BuildpackDownloader
+	toolExecutor        ImageToolExecutor
 
 	experimental    bool
 	registryMirrors map[string]string
@@ -234,6 +235,10 @@ func NewClient(opts ...Option) (*Client, error) {
 				logger: client.logger,
 			},
 		)
+	}
+
+	if client.toolExecutor == nil {
+		client.toolExecutor = newSkopeoToolExecutor(client.imageFetcher, client.logger, client.docker)
 	}
 
 	client.lifecycleExecutor = build.NewLifecycleExecutor(client.logger, client.docker)

@@ -64,6 +64,12 @@ type LifecycleExecutor interface {
 	Execute(ctx context.Context, opts build.LifecycleOptions) error
 }
 
+type ImageToolExecutor interface {
+	Init(ctx context.Context, options image.FetchOptions) error
+	CopyToOCI(ctx context.Context, imgRef string, path string) error
+	CopyToDaemon(ctx context.Context, path string, imgRef name.Reference) error
+}
+
 type IsTrustedBuilder func(string) bool
 
 // BuildOptions defines configuration settings for a Build.
@@ -88,6 +94,10 @@ type BuildOptions struct {
 	// Specify the run image the Image will be
 	// built atop.
 	RunImage string
+
+	// OCIPath is the path to export the oci layout image
+	// If unset it defaults to "oci" folder in current working directory.
+	OCIPath string
 
 	// Address of docker daemon exposed to build container
 	// e.g. tcp://example.com:1234, unix:///run/user/1000/podman/podman.sock
@@ -333,6 +343,15 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 		opts.TrustBuilder = IsSuggestedBuilderFunc
 	}
 
+	// User's path is process to generate the final real path to save the OCI images.
+	ociPath := opts.OCIPath
+	if ociPath != "" {
+		ociPath, err = c.setUpOCIEnvironment(ctx, opts, rawBuilderImage, imgOS, runImageName, ociPath)
+		if err != nil {
+			return errors.Wrapf(err, "")
+		}
+	}
+
 	lifecycleOpts := build.LifecycleOptions{
 		AppPath:            appPath,
 		Image:              imageRef,
@@ -361,6 +380,7 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 		Termui:             termui.NewTermui(imageRef.Name(), ephemeralBuilder, runImageName),
 		SBOMDestinationDir: opts.SBOMDestinationDir,
 		CreationTime:       opts.CreationTime,
+		OCIPath:            ociPath,
 	}
 
 	lifecycleVersion := ephemeralBuilder.LifecycleDescriptor().Info.Version
@@ -407,6 +427,10 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 
 	if err := c.lifecycleExecutor.Execute(ctx, lifecycleOpts); err != nil {
 		return errors.Wrap(err, "executing lifecycle. This may be the result of using an untrusted builder")
+	}
+
+	if ociPath != "" {
+		c.toolExecutor.CopyToDaemon(ctx, ociPath, lifecycleOpts.Image)
 	}
 
 	return c.logImageNameAndSha(ctx, opts.Publish, imageRef)
@@ -575,6 +599,65 @@ func allBuildpacks(builderImage imgutil.Image, additionalBuildpacks []buildpack.
 	})
 
 	return all, nil
+}
+
+// setUpOCIEnvironment prepare the environment require by the Lifecycle to export the image to OCI format. The process
+// involves the following:
+// 1. Guarantee the path in the user's file system exits, and it's writable
+// 2. Save the run-image in the path provided by the user in OCI layout format
+func (c *Client) setUpOCIEnvironment(ctx context.Context, opts BuildOptions, rawBuilderImage imgutil.Image, imgOS string, runImageName string, sourcePath string) (string, error) {
+
+	ociPath, err := c.processOCIPath(sourcePath)
+	if err != nil {
+		return "", errors.Wrapf(err, "invalid oci path '%s'", opts.OCIPath)
+	}
+
+	imgArch, err := rawBuilderImage.Architecture()
+	if err != nil {
+		return "", errors.Wrapf(err, "getting builder architecture")
+	}
+
+	if err = c.toolExecutor.Init(ctx, image.FetchOptions{
+		Daemon:     true,
+		PullPolicy: opts.PullPolicy,
+		Platform:   fmt.Sprintf("%s/%s", imgOS, imgArch)}); err != nil {
+		return "", errors.Wrapf(err, "initializing the image tool executor")
+	}
+
+	if err = c.toolExecutor.CopyToOCI(ctx, runImageName, ociPath); err != nil {
+		return "", errors.Wrapf(err, "copying run image %s into OCI format at %s", runImageName, ociPath)
+	}
+	return ociPath, nil
+}
+
+// processOCIPath evaluates if provides path exits in the file system or creates it if that is not the case
+func (c *Client) processOCIPath(ociPath string) (string, error) {
+	var (
+		resolvedOCIPath string
+		err             error
+	)
+	if ociPath == "" {
+		return "", nil
+	}
+
+	resolvedOCIPath = ociPath
+	_, err = os.Stat(ociPath)
+	if err == nil {
+		if resolvedOCIPath, err = filepath.EvalSymlinks(ociPath); err != nil {
+			return "", errors.Wrap(err, "evaluate symlink")
+		}
+	}
+
+	if resolvedOCIPath, err = filepath.Abs(resolvedOCIPath); err != nil {
+		return "", errors.Wrap(err, "resolve absolute path")
+	}
+
+	if err = os.MkdirAll(resolvedOCIPath, os.ModePerm); err != nil {
+		return "", errors.Wrapf(err, "could not create the directory %s", resolvedOCIPath)
+	}
+
+	c.logger.Debugf("OCI Path to save the image: %s", resolvedOCIPath)
+	return resolvedOCIPath, nil
 }
 
 func (c *Client) processAppPath(appPath string) (string, error) {
