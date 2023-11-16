@@ -20,7 +20,7 @@ jobs:
       strategy:
         fail-fast: false
         matrix:
-          target: [bionic, focal, jammy, lunar]
+          target: [jammy]
       runs-on: ubuntu-20.04
       steps:
           - name: Checkout code
@@ -61,6 +61,18 @@ jobs:
               PACK_VERSION: ${{ steps.version.outputs.result }}
               REPO: "buildpacks/pack"
               UBUNTU_VERSION:  ${{ matrix.target }}
+              USER: ${{ vars.LAUNCHPAD_USER }}
+
+          - name: add SSH key
+            env:
+              SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+            run: |
+              mkdir -p /home/runner/.ssh
+              ssh-keyscan ppa.launchpad.net >> /home/runner/.ssh/known_hosts
+              echo "${{ secrets.LAUNCHPAD_SSH_KEY }}" > /home/runner/.ssh/github_actions
+              chmod 600 /home/runner/.ssh/github_actions
+              ssh-agent -a $SSH_AUTH_SOCK > /dev/null	
+              ssh-add /home/runner/.ssh/github_actions
 
             ###
             # NOTE: 'uses' does not support interpolation so we have to manually define the
