@@ -7,7 +7,7 @@ function create_ppa() {
   : "$MAINTAINER_NAME"
   : "$MAINTAINER_EMAIL"
   : "$SCRIPT_DIR"
-
+  export GPG_TTY=$(tty)
   echo "> Importing GPG keys..."
   gpg --import <(echo "$GPG_PUBLIC_KEY")
   gpg --allow-secret-key-import --import <(echo "$GPG_PRIVATE_KEY")
