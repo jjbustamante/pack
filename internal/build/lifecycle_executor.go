@@ -96,6 +96,8 @@ type LifecycleOptions struct {
 	FileFilter                      func(string) bool
 	Workspace                       string
 	GID                             int
+	UID                             int
+	MacAddress                      string
 	PreviousImage                   string
 	ReportDestinationDir            string
 	SBOMDestinationDir              string
