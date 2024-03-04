@@ -102,10 +102,8 @@ type moduleWithDiffID struct {
 type BuilderOption func(*options) error
 
 type options struct {
-	flatten  bool
-	exclude  []string
-	runImage string
-  toFlatten buildpack.FlattenModuleInfos
+	runImage  string
+	toFlatten buildpack.FlattenModuleInfos
 	labels    map[string]string
 }
 
@@ -114,8 +112,7 @@ func WithRunImage(name string) BuilderOption {
 		o.runImage = name
 		return nil
 	}
-
-
+}
 
 // FromImage constructs a builder from a builder image
 func FromImage(img imgutil.Image) (*Builder, error) {
@@ -162,7 +159,6 @@ func constructBuilder(img imgutil.Image, newName string, errOnMissingLabel bool,
 			return nil, errors.Wrapf(err, "adding label %s=%s", labelKey, labelValue)
 		}
 	}
-
 
 	bldr := &Builder{
 		baseImageName:        img.Name(),
